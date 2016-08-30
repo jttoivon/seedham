@@ -1,0 +1,48 @@
+#!/bin/bash
+
+
+usage="
+Usage: seedham [ -v ] [ -r arg ] [ motif_width | seed ] inputfile
+Either seed or the length of seed can be given as parameter.
+Input file should contain one sequence per line and nothing else.
+-r arg Hamming radius
+-v     Be verbose"
+
+base=$(dirname $0)
+
+radius=1
+
+while getopts :r:v OPT; do
+    case $OPT in
+        r|+r)   # Hamming radius
+            radius=$OPTARG
+            ;;
+        v|+v)   # verbose
+            verbose=1
+            ;;
+        *)
+            #echo "usage: ${0##*/} [+-dn} [--] ARGS..."
+            echo "$usage"
+            exit 2
+    esac
+done
+shift $(( OPTIND - 1 ))
+OPTIND=1
+
+if [[ $# -ne 2 ]] ; then
+   echo Two command line parameters are needed, $# given.
+   echo "$usage"
+   exit 1
+fi
+
+seed=$1
+file=$2
+
+if [[ $verbose == 1 ]] ; then
+    $base/multinomial --hamming-radius $radius --multimer $seed $file
+else
+    temp=$(mktemp)
+    $base/multinomial --hamming-radius $radius --output-matrix $temp --multimer $seed $file > /dev/null
+    cat $temp
+    rm $temp
+fi

@@ -1,0 +1,145 @@
+/*
+	Copyright 2010-2011 Kamiar Kanani <kamiar.kanani@gmail.com>
+
+    This file is part of multifast.
+
+    multifast is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    multifast is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with multifast.  If not, see <http://www.gnu.org/licenses/>.
+
+*/
+
+How to Compile
+--------------
+
+First compile the library
+	# cd aho_corasick
+	# make
+
+	It will produce the static library libahocorasick.a
+
+
+How to Add to your project
+--------------------------
+You must set -I and -L and -l optins in gcc comandline
+suppose:
+	aho_corasick.h is placed in ./inc/ folder
+	and libahocorasick.a in ./lib/ folder
+	then you must add following to your gcc:
+	gcc ... -I./inc/ -L./lib/ -lahocorasick
+	
+	see Makefile in examples/ folder
+
+
+How to use Aho-Corasick Library to your project
+-----------------------------------------------
+
+0. Include the header
+
+	#include "aho_corasick.h"
+
+	The API has 6 functions:
+
+	void     ac_automata_init           (AC_AUTOMATA * thiz, MATCH_CALBACK mc);
+	AC_ERROR ac_automata_add_string     (AC_AUTOMATA * thiz, STRING * str);
+	void     ac_automata_locate_failure (AC_AUTOMATA * thiz);
+	void     ac_automata_search         (AC_AUTOMATA * thiz, STRING * str, void * param);
+	void     ac_automata_reset          (AC_AUTOMATA * thiz);
+	void     ac_automata_release        (AC_AUTOMATA * thiz);
+
+
+1. Define a callback function of type MATCH_CALBACK (for example):
+
+	int match_handler(MATCH * m, void * param)
+	{
+		unsigned int j;
+		struct match_param * mparm = (struct match_param *)param;
+
+		for (j=0; j < m->match_num; j++)
+		{
+			printf("%ld ", m->position);
+			printf("%ld ", m->matched_strings[j].id);
+			// printf("%s", m->matched_strings[j].str);
+			printf("\n");
+		}
+
+		return 0; /* Find all matches */
+	}
+
+	every match, is reported as a MATCH type. see ac_types.h
+	CAUTION: be carefull about using m->matched_strings[j].str
+	if 'str' has permanent string allocation inside your program 
+	memory area you can use this form. otherwise it will point to
+	an incorrect memory place. in this case you must reconstruct
+	the pattern from input string.
+
+
+2. Define an Aho-Corasick automata
+
+	AC_AUTOMATA aca; /* Aho-Corasick Automata */
+
+
+3. Intitialize the automata
+
+	/* Initialize automata */
+	ac_automata_init (&aca, match_handler);
+
+
+4. add patterns to automata
+
+	STRING tmp_str; /* Temporary STRING */
+	...
+	while (...)
+	{
+		ac_automata_add_string (&aca, &tmp_str);
+	}
+
+	the above function returns ACERR_NONE on success, otherwise
+	returns one of error codes in AC_ERROR type and skips add.
+
+
+5. Build index: after you add all patterns you must call ac_automata_locate_failure()
+
+	/* Build Automata fauilure index */
+	ac_automata_locate_failure (&aca);
+	
+	from now you can not add strings anymore, otherwise ac_automata_add_string() 
+	gets you ACERR_DUPLICATE_STRING error code.
+
+
+6. Now you can do search
+
+	ac_automata_search (&aca, &tmp_str, &mparm);
+
+	the &mparam will be send to callback function.
+	see example1 for more details
+
+
+7. Reset
+
+	/* if you want to do another search with same automata 
+	   you must reset automata.
+	*/
+	ac_automata_reset(&aca);
+
+
+8. Release
+
+	/* Release Automata: 
+	   if you have finished with the automata and will not
+	   use it in the rest of your program please release it.
+	*/
+	ac_automata_release (&aca);
+
+
+See example1.c in example/ folder for more details.
+
