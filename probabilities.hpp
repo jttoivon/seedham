@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <boost/tuple/tuple.hpp>
+#include <boost/foreach.hpp>
 
 enum {atleast, atmost, exactly};
 
@@ -93,6 +94,8 @@ compute_logodds_probability(const std::string& s, const dmatrix& m);
 double
 compute_normal_probability(const std::string& s, const dmatrix& m);
 
+double
+compute_normal_probability(big_int code, int k, const dmatrix& m);
 
 double
 max_matrix_score(const dmatrix& m);
@@ -159,5 +162,32 @@ compute_bernoulli_probability(big_int code, int k, const std::vector<double>& q)
 
 boost::tuple<std::vector<double>, dmatrix, std::vector<int> >
 count_background(const std::vector<std::string>& sequences);
+
+
+class iupac_probability_in_background
+{
+public:
+  iupac_probability_in_background(const std::vector<double>& bg)
+    : iupac_probabilities(256)
+  {
+    BOOST_FOREACH(char iupac_char, iupac_chars) {
+      BOOST_FOREACH(char c, iupac_class(iupac_char)) {
+	iupac_probabilities[(unsigned char)iupac_char] += bg[to_int(c)];
+      }
+    }
+  }
+
+  double
+  operator()(const std::string& s) {
+    assert(is_iupac_string(s));
+    double result = 1.0;
+    for (int i=0; i < s.length(); ++i)
+      result *= iupac_probabilities[s[i]];
+    return result;
+  }
+  
+private:
+  std::vector<double> iupac_probabilities;
+};
 
 #endif // PROBABILITIES_HPP

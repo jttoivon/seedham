@@ -111,6 +111,14 @@ normalize_matrix_columns(matrix<double>& m);
 void
 normalize_whole_matrix(matrix<double>& m);
 
+
+dmatrix
+normalize_matrix_columns_copy(matrix<double> m);
+
+
+dmatrix
+normalize_matrix_rows_copy(matrix<double> m);
+
 bool
 is_column_stochastic_matrix(const matrix<double>& m);
 

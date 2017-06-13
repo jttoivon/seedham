@@ -65,13 +65,17 @@ public:
     return result;
   }
 
-  int get_rows() const { return rows; }
-  int get_columns() const { return columns; }
+  int
+  get_rows() const { return rows; }
+  
+  int
+  get_columns() const { return columns; }
 
   std::pair<int,int>
   dim() const { return std::make_pair(rows, columns); }
 
-  std::vector<T> row(int l) const {
+  std::vector<T>
+  row(int l) const {
     assert ( l >= 0 && l < rows );
     std::vector<T> r;
     for (int i=0; i < columns; ++i)
@@ -79,21 +83,24 @@ public:
     return r;
   }
 
-  void set_row(int l, const std::vector<T>& r) {
+  void
+  set_row(int l, const std::vector<T>& r) {
     assert( l >= 0 && l < rows );
     assert( r.size() == columns );
     for (int i=0; i < columns; ++i)
       (*this)(l, i) = r[i];
   }
 
-  void set_column(int l, const std::vector<T>& c) {
+  void
+  set_column(int l, const std::vector<T>& c) {
     assert( l >= 0 && l < columns );
     assert( c.size() == rows );
     for (int i=0; i < rows; ++i)
       (*this)(i, l) = c[i];
   }
 
-  std::vector<T> column(int l) const {
+  std::vector<T>
+  column(int l) const {
     assert( l >= 0 && l < columns );
     std::vector<T> c;
     for (int i=0; i < rows; ++i)
@@ -123,7 +130,8 @@ public:
     std::swap(p, other.p);
   }
 
-  std::vector<T> to_vector() const {
+  std::vector<T>
+  to_vector() const {
     std::vector<T> c;
     for (int i=0; i < rows; ++i)
       for (int j=0; j < columns; ++j)
@@ -205,6 +213,9 @@ public:
 
   matrix<T>&
   operator+=(const matrix<T>& m2);
+
+  matrix<T>&
+  operator-=(const matrix<T>& m2);
 
   
   // void
@@ -298,6 +309,26 @@ private:
 };
 
 template <typename T>
+matrix<T>
+matrix_prefix(const matrix<T>& m, int length)
+{
+  assert(length >= 0);
+  assert(length <= m.get_columns());
+
+  return m.cut(0, 0, m.get_rows(), length);
+}
+
+template <typename T>
+matrix<T>
+matrix_suffix(const matrix<T>& m, int length)
+{
+  assert(length >= 0);
+  assert(length <= m.get_columns());
+
+  return m.cut(0, m.get_columns() - length, m.get_rows(), length);
+}
+
+template <typename T>
 bool
 operator==(const matrix<T>& m1, const matrix<T>& m2)
 {
@@ -384,6 +415,25 @@ matrix<T>::operator+=(const matrix<T>& m2)
   for (int i=0; i < rows1; ++i)
     for (int j=0; j < cols1; ++j)
       (*this)(i,j) += m2(i,j);
+
+  return *this;
+}
+
+template <typename T>
+matrix<T>&
+matrix<T>::operator-=(const matrix<T>& m2)
+{
+  int cols1 = this->get_columns();
+  int rows1 = this->get_rows();
+
+  int cols2 = m2.get_columns();
+  int rows2 = m2.get_rows();
+
+  assert(rows1==rows2 && cols1==cols2);
+
+  for (int i=0; i < rows1; ++i)
+    for (int j=0; j < cols1; ++j)
+      (*this)(i,j) -= m2(i,j);
 
   return *this;
 }

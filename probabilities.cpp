@@ -300,7 +300,8 @@ count_positional_background(const std::vector<std::string>& sequences)
     const std::string& line = sequences[i];
     for (int j=0; j < L; ++j) {
       ++freq(to_int(line[j]),j);
-      //      ++freq(to_int(complement(line[j])), L-j-1); // reverse complement
+      if (use_two_strands)
+	++freq(to_int(complement(line[j])), L-j-1); // reverse complement
     }
   }
 
@@ -345,6 +346,17 @@ compute_bernoulli_probability(big_int code, int k, const std::vector<double>& q)
   return prob;
 }
 
+double
+compute_normal_probability(big_int code, int k, const dmatrix& m)
+{
+  double prob = 1.0;
+  for (int i=0; i < k; ++i, code >>= 2)
+    prob *= m(code & 3, k-i-1);
+  
+  assert(prob > 0);
+
+  return prob;
+}
 
 double
 compute_markov_probability(const std::string& line, 

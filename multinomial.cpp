@@ -26,9 +26,9 @@
 #include "dependence.hpp"
 #include "packed_string.hpp"
 #include "parameters.hpp"
-#include "dinucleotide.hpp"
 #include "kmer_tools.hpp"
 #include "multinomial_helper.hpp"
+#include "seed_basic.hpp"
 
 #include <cfloat>
 #include <math.h>
@@ -54,13 +54,15 @@ bool print_neighbourhood=false;
 
 
 bool automatic_limit_for_palindromic_index = false;
-bool use_multimer=false;   // allow multiple occurrences per sequence
-bool use_background_correction=false;
-bool use_bernoulli_background=false;
+
+//bool use_background_correction=false;
 bool use_dinucleotide_model=false;
 bool use_cell_correction=false;
+bool correct_for_seed_bias = false;
 bool contains_N = false;
+bool lambda_given = false;   // whether lambda was given as command line parameter
 
+std::string real_matrix_filename; // for testing purposes
 
 prior<double> pseudo_counts;
 
@@ -70,8 +72,7 @@ std::vector<double> background_probabilities(4);
 matrix<double> background_frequency_matrix(4,4);   // for background noise
 matrix<double> background_probability_matrix(4,4); // for background noise
 
-
-// this accepts multiple occurences per sequence
+// this accepts multiple occurrences per sequence
 void
 distribution_of_startpositions(const std::vector<std::string>& sequences, const std::string& str)
 {
@@ -122,7 +123,7 @@ distribution_of_startpositions(const std::vector<std::string>& sequences, const 
 
 
 
-// print occurence statistics for all possible k-mers
+// print occurrence statistics for all possible k-mers
 void
 print_hamming_statistics2(const std::vector<std::string>& sequences, const std::string& str, int delta)
 {
@@ -140,9 +141,9 @@ print_hamming_statistics2(const std::vector<std::string>& sequences, const std::
       const std::string& line = sequences[i];
       for (int j=0; j < line.length()-k+1; ++j) {
 	int d = hamming_distance(str, line.substr(j,k));
-	if (d==l) {          // found occurence
-	  ++all[dna_to_number(line.substr(j,k))];
-	  seqs[dna_to_number(line.substr(j,k))].insert(i);
+	if (d==l) {          // found occurrence
+	  ++all[dna_to_number<size_t>(line.substr(j,k))];
+	  seqs[dna_to_number<size_t>(line.substr(j,k))].insert(i);
 	}
 
       }
@@ -166,12 +167,13 @@ print_hamming_statistics2(const std::vector<std::string>& sequences, const std::
       ratio+=(double)all[i]/seqs[i].size();
       seqs[i].clear();
     }
-    printf("On average, %lg occurences per sequence\n", ratio/count);
+    printf("On average, %lg occurrences per sequence\n", ratio/count);
     printf("%.3lg%% of the above strings occur only once per sequence\n",
 	   (double)count2/count*100);
   }
 }
 
+// Find out number of sites in data within Hamming distance 'delta' from 'seed'
 void
 find_count_of_hamming_neighbourhood(const std::vector<std::string>& sequences, const std::string& seed, int delta)
 {
@@ -195,7 +197,7 @@ find_count_of_hamming_neighbourhood(const std::vector<std::string>& sequences, c
   }
 }
 
-// print occurence statistics for all Hamming neighbourhoods H(str, d) for 0<=d<=delta
+// print occurrence statistics for all Hamming neighbourhoods H(str, d) for 0<=d<=delta
 void
 print_hamming_statistics(const std::vector<std::string>& sequences, const std::string& str, int delta)
 {
@@ -223,14 +225,14 @@ print_hamming_statistics(const std::vector<std::string>& sequences, const std::s
 
       }
     }
-    printf("\n%i occurences of the Hamming neighbourhood H(str,%i) on %i sequences\n", 
+    printf("\n%i occurrences of the Hamming neighbourhood H(str,%i) on %i sequences\n", 
 	   all, l, seqs);
     int count2 = std::count(occs.begin(), occs.end(), 1);
 //     for (int i=0; i < lines; ++i)
 //       if (occs[i]==1)
 // 	++count2;
-    printf("On average, %lg occurences per sequence\n", (double)all/seqs);
-    printf("%.3lg%% of sequences have exactly one occurence\n",
+    printf("On average, %lg occurrences per sequence\n", (double)all/seqs);
+    printf("%.3lg%% of sequences have exactly one occurrence\n",
 	   (double)count2/seqs*100);
   }
 }
@@ -268,41 +270,9 @@ substring(const std::string& s, int pos, int len, int dir)
 }
 
 
-void
-find_snips_monomer_helper(std::vector<quad>& positions, const std::string& query, int j, 
-			  const std::vector<std::string>& sequences)
-{
-  int k = query.length();
-  int lines = sequences.size();
-  for (int i=0; i < lines; ++i) {
-    const std::string& line = sequences[i];
-    int c1 = BNDM_with_joker(line, query);
-    int c2 = use_two_strands ? BNDM_with_joker(line, reverse_complement(query)) : 0;
-    if (c1 + c2 == 1 or (c1 == 1 && c2 == 1 && is_palindromic(query))) {
-      std::string s = query;
-      int dir = (c1 == 0 ? -1 : 1);
-      if (dir == -1)
-	s=reverse_complement(s);
-      size_t first_pos = std::search(line.begin(), line.end(), s.begin(), s.end(), iupac_match) - line.begin();
-      assert(iupac_string_match(line.substr(first_pos,k), s));
-
-      switch (positions[i].pos) {
-      case -2:                                  // rejected
-	continue;
-      case -1: positions[i]=quad(first_pos, j, dir);   // was untouched
-	continue;
-      default:                                           // another occurrence on the same line
-	if (positions[i].pos != first_pos)
-	  positions[i].pos = -2;  // reject
-      }
-
-    }
-    else if (c1+c2 > 1)   // definitely reject
-      positions[i].pos = -2;
-  } // for lines
-}
 
 // Number of subsequences used to build the pwm
+// NOTE! This only works when the Hamming radius is 1x
 int
 get_total_multinomial_count(const dmatrix& count_pwm, const std::string& seed)
 {
@@ -323,321 +293,10 @@ get_total_multinomial_count(const dmatrix& count_pwm, const std::string& seed)
   return total_count;
 }
 
-// monomeric version
-// Reject sequences with multiple query occurences
-// Compute the counts for the multinomial1 matrix
-matrix<double>
-find_snips_monomer(const std::string& seed, const std::vector<std::string>& sequences, int hamming_distance)
-{
-  assert(hamming_distance == 1);
-  TIME_START(t);
-  int lines = sequences.size();
-  std::vector<quad> positions(lines);
-
-  int k = seed.length();
-  char nucs[] = "ACGT";
-  printf("Multinomial-1 is using seed %s\n", seed.c_str());
-
-  matrix<double> result(4,k);
-  find_snips_monomer_helper(positions, seed, -1, sequences);
-
-  for (int j=0; j < k; ++j) {        // iterate through all string positions
-    std::string query = seed;
-    for (int a=0; a < 4; ++a) {      // iterate through all characters
-      if (nucs[a] == seed[j])  // the consensus count was already computed
-	continue;
-      query[j]=nucs[a];
-      find_snips_monomer_helper(positions, query, j, sequences);
-    }
-  }
-  
-  // extract subsequences from reads that have only one hit
-  std::vector<std::string> sites;
-  for (int i=0; i < lines; ++i) {
-    int pos = positions[i].pos;
-    if (pos >= 0) {
-      std::string s = sequences[i].substr(pos, k);
-      sites.push_back(s);
-      //      printf("##%s\n", s.c_str());
-    }
-    // if (pos == -1)
-    //   printf("#%s\n", sequences[i].c_str());
-    // if (pos == -2)
-    //   printf("*%s\n", sequences[i].c_str());
-  }
-
-  printf("Number of sites is %zu\n", sites.size());
-  int seed_count=0;
-  for (int i=0; i < sites.size(); ++i) {
-    bool is_palindrome = is_palindromic(sites[i]);
-    if (iupac_string_match(sites[i], seed))
-      ++seed_count;
-    if (use_two_strands and iupac_string_match(reverse_complement(sites[i]), seed) and (count_palindromes_twice or not is_palindrome))
-      ++seed_count;
-  }
-
-  for (int j=0; j < k; ++j) {        // iterate through all string positions
-    std::string query = seed;
-    for (int a=0; a < 4; ++a) {      // iterate through all characters
-      if (nucs[a] == seed[j])  // the consensus count was already computed
-	continue;
-      query[j]=nucs[a];
-      for (int i=0; i < sites.size(); ++i) {
-	bool is_palindrome = is_palindromic(sites[i]);
-	if (iupac_string_match(sites[i], query))
-	  ++result(a, j);
-	if (use_two_strands and iupac_string_match(reverse_complement(sites[i]), query) and (count_palindromes_twice or not is_palindrome))
-	  ++result(a, j);
-      }
-    }
-  }
-
-  printf("Seed %s count = %i\n", seed.c_str(), seed_count);
-
-  // add seed counts to the pwm
-  for (int j=0; j < k; ++j) {      // iterate through all string positions
-    for (int a=0; a < 4; ++a) {    // iterate through all characters
-      if (nucs[a] == seed[j]) 
-	result(a, j) = seed_count;
-    }
-  }
-
-  int total_count = get_total_multinomial_count(result, seed);
-  printf("Total multinomial-1 count is %d\n", total_count);
-
-  int match_count=0;
-  int nomatch_count=0;
-  int too_many_matches_count=0;
-  for (int i=0; i < lines; ++i)
-    switch (positions[i].pos) {
-    case -1:
-      ++nomatch_count;
-      break;
-    case -2:
-      ++too_many_matches_count;
-      break;
-    default:
-      ++match_count;
-    }
-
-  printf("%i sequences matched with hamming distance 1, rate = %g\n",
-	 match_count, (double)match_count/lines);
-
-  printf("%i sequences didn't match with hamming distance 1, error rate = %g\n",
-	 nomatch_count, (double)nomatch_count/lines);
-
-  printf("%i sequences had too many matches with hamming distance 1, rate = %g\n",
-	 too_many_matches_count, (double)too_many_matches_count/lines);
-
-  // print the alignment to file descriptor 3, if it is open
-//   if (print_alignment) {
-//     FILE* fp = fdopen(3, "a");
-//     if (fp != NULL) {
-//       for (int t = 0; t < alignment.size(); ++t)
-// 	fprintf(fp, "%s\n", alignment[t].c_str());
-//       fclose(fp);
-//     }
-//   }
-
-  TIME_PRINT("Multinomial-1 algorithm took %.2f seconds.\n", t);
-
-  return result;
-}  // find_snips_monomer
 
 
 
 
-// helper function for find_multinomial2
-int 
-find_base_counts(const std::string& base, int fixed_pos, 
-		 const std::string& str1, const std::string& str2)
-{
-
-  int k = base.length();
-  int count=0;
-  std::string nucs = "ACGT";
-
-  // this is either consensus or its one point mutation
-  count += BNDM_with_joker(str1, base);  
-  if (use_two_strands)
-    count += BNDM_with_joker(str2, base);
-
-
-  // these are one or two point mutations of the consensus
-  for (int i=0; i < k; ++i) {        // iterate through all string positions, except fixed_pos
-    if (i == fixed_pos)
-      continue;
-
-    for (int a=0; a<4; ++a) {
-      std::string temp = base;
-      //      if (to_int(base[i]) == a)      // these were already counted
-      if (iupac_match(nucs[a], base[i]))      // these were already counted
-	continue;
-      temp[i]=nucs[a];
-      //temp[i]='.';                     // dot matches any nucleotide
-      count += BNDM_with_joker(str1, temp);
-      if (use_two_strands)
-	count += BNDM_with_joker(str2, temp);
-    }
-  }
-
-  return count;
-}
-
-// this computes the multinomial2 matrix counts
-matrix<double>
-find_multinomial2(const std::string& seed, const std::vector<std::string>& sequences, int hamming_distance)
-{
-  assert(hamming_distance == 2);
-  TIME_START(t);
-  int k = seed.length();
-  char nucs[] = "ACGT";
-  std::string str1;
-  std::string str2;
-
-  str1=join(sequences, '#');
-  str2=join_rev(sequences, '#');
-
-  matrix<double> result(4,k);
-  for (int i=0; i < k; ++i) {        // iterate through all string positions
-    std::string temp = seed;
-    for (int j=0; j < 4; ++j) {      // iterate through all characters
-      temp[i]=nucs[j];
-      result(j, i) = find_base_counts(temp, i, str1, str2);
-    }
-
-  }
-  printf("Multinomial-2 algorithm took\n");
-  TIME_CHECK(t);
-  printf("seconds\n");
-  return result;
-}
-
-typedef boost::unordered_map<int, int> id_to_count_type;
-//typedef std::vector<int> id_to_count_type;
-typedef boost::unordered_map<big_int, std::vector<boost::tuple<int, int> > > code_to_tuple_type;
-typedef boost::unordered_map<std::string, std::vector<boost::tuple<int, int> > > string_to_tuple_type;
-
-// callback function for Aho-Corasick automaton
-int match_handler_counts(MATCH* m, void* param)
-{
-
-  //printf ("ending at @ position %ld string(s) ", m->position-4);
-
-  assert(m->match_num == 1);
-  big_int id = m->matched_strings[0].id;  // This is ordinal id, not coded DNA sequence
-
-  id_to_count_type* result = (id_to_count_type*)param;
-  (*result)[id] += 1;
-
-  /* to find all matches always return 0 */
-  return 0;
-
-}
-
-// Callback function for Aho-Corasick automaton.
-// Add all the occurrences positions to the list of the corresponding pattern
-int 
-match_handler_positions(MATCH* m, void* param)
-{
-
-  assert(m->match_num == 1);   // Could be larger than zero, if one pattern is a suffix of another
-  big_int id = m->matched_strings[0].id;  // This is ordinal id, not coded DNA sequence
-
-  std::vector<std::vector<long int> >* result = (std::vector<std::vector<long int> >*)param;
-  (*result)[id].push_back(m->position);
-
-  /* to find all matches always return 0 */
-  return 0;
-
-}
-
-// this computes the multinomial2 matrix counts using AC-automaton
-matrix<double>
-find_multinomial2_v2(const std::vector<std::string>& sequences, const std::string& consensus)
-{
-  TIME_START(t);
-  int k = consensus.length();
-  char nucs[] = "ACGT";
-  std::string str1;
-  std::string str2;
-
-  str1=join(sequences, '#');
-  str2=join_rev(sequences, '#');
-  matrix<double> result(4,k);
-  big_int myid = dna_to_number(consensus);
-
-  code_to_tuple_type code_to_tuple;
-
-  for (int j=0; j < k; ++j) {        // iterate through all string positions
-    std::string temp = consensus;
-    int shift1 = 2*(k-j-1);
-    big_int myid2 = myid - ((big_int)to_int(consensus[j]) << shift1);
-    for (int a=0; a < 4; ++a) {      // iterate through all characters
-      temp[j]=nucs[a];
-      big_int myid3 =  myid2 + ((big_int)a << shift1);
-      //my_assert(myid3, dna_to_number(temp));
-      code_to_tuple[myid3].push_back(boost::make_tuple(j, a));
-      
-
-      for (int h=0; h < k; ++h) {        // iterate through all string positions, except fixed_pos
-	if (h == j)
-	  continue;
-	std::string temp2 = temp;
-	int shift2 = 2*(k-h-1);
-	big_int myid4 = myid3 - ((big_int)to_int(consensus[h]) << shift2);
-	for (int b=0; b<4; ++b) {
-	  if (to_int(temp[h]) == b)
-	    continue;
-	  big_int myid5 = myid4 + ((big_int)b << shift2);
-	  temp2[h]=nucs[b];
-	  //my_assert(myid5, dna_to_number(temp2));
-
-	  code_to_tuple[myid5].push_back(boost::make_tuple(j, a));
-
-	}
-      }
-    }
-  }
-
-  std::vector<std::string> strings;
-  std::vector<big_int> id_to_code;
-  big_int code;
-  BOOST_FOREACH(boost::tie(code, boost::tuples::ignore), code_to_tuple) {
-    strings.push_back(number_to_dna(code, k));
-    id_to_code.push_back(code);
-  }
-
-  aho_corasick my_aca(match_handler_counts);
-  for (int i=0; i < strings.size(); ++i) {
-    my_aca.add_string(strings[i], i);
-  }
-  big_int seed_id = 0;
-
-  id_to_count_type id_to_count;
-
-  my_aca.search(str1, &id_to_count);
-  if (use_two_strands) {
-    my_aca.search(str2, &id_to_count);
-  }
-    
-  printf("Seed %s count = %i\n", consensus.c_str(), id_to_count[seed_id]);
-  int id;
-  int count;
-  BOOST_FOREACH(boost::tie(id, count), id_to_count) {
-    std::vector<boost::tuple<int,int> >& temp = code_to_tuple[id_to_code[id]];
-    for (int i=0; i < temp.size(); ++i) {
-      int j, a;
-      boost::tie(j,a) = temp[i];
-      result(a, j) += count;
-    }
-  }
-
-  printf("Multinomial-2 algorithm took\n");
-  TIME_CHECK(t);
-  printf("seconds\n");
-  return result;
-} // find_multinomial2_v2
 
 
 int 
@@ -652,6 +311,7 @@ myskip(int i, int skip)
 }
 
 
+// Convert memory area of length 'bytes' bytes to a string of chars '0' and '1'
 std::string
 bit_representation_helper(void* f, int bytes)
 {
@@ -673,118 +333,9 @@ bit_representation_helper(void* f, int bytes)
 }
 
 
-// this computes the multinomial-n matrix counts by scanning all possible windows
-dmatrix
-find_multinomial_n_scan(const std::string& seed, const std::vector<std::string>& sequences, int n)
-{
-  TIME_START(t);
-  const int k = seed.length();
-  const int L = sequences[0].length();
-  assert(n >= 0);
-  assert(n <= k);
-  //  char nucs[] = "ACGT";
-  dmatrix result(4, k);
-  for (int i=0; i < sequences.size(); ++i) {
-    int max_dir = use_two_strands ? 2 : 1;
-    for (int dir=0; dir < max_dir; ++dir) {
-      const std::string& line = dir == 0 ? sequences[i] : reverse_complement(sequences[i]);
-      for (int j=0; j < L-k+1; ++j) {
-	std::string query = line.substr(j, k);
-	bool is_palindrome = is_palindromic(query);
-	if (dir==1 and is_palindrome and not count_palindromes_twice)
-	  continue;
-	int hd = iupac_hamming_dist(query, seed, n);
-	if (hd > n)
-	  continue;
-	for (int pos=0; pos < k; ++pos) {
-	  char c = line[j+pos];
-	  int cc = iupac_match(c, seed[pos]) ? 0 : 1;   // 1 if mismatch
-	  if (hd-cc <= n-1)
-	    ++result(to_int(c), pos);
-	}
-      }
-    }
-  }
 
-  TIME_PRINT("Multinomial-n scanning algorithm took %.2f seconds\n", t);
-  return result;
-}
-
-
-
-// this computes the multinomial-n matrix counts using suffix array (was AC-automaton)
-dmatrix
-find_multinomial_n(const std::string& seed, const std::vector<std::string>& sequences, int n)
-{
-  TIME_START(t);
-  const int k = seed.length();
-  //const int L = sequences[0].length();
-  assert(n >= 0);
-  assert(n <= k);
-  //char nucs[] = "ACGT";
-  std::string str1;
-  std::string str2;
-
-  str1=join(sequences, '#');
-  if (use_two_strands) {
-    str1.append("#");
-    str1 += join_rev(sequences, '#');
-  }
-
-  dmatrix result(4, k);
-
-  code_to_tuple_type code_to_tuple;
-  string_to_tuple_type string_to_tuple;
-
-  bool use_suffix_array=true;
-
-  if (use_suffix_array) {
-     suffix_array sa(str1);
-     result = find_multinomial_n_suffix_array(seed, sequences, sa, n, use_multimer).get<0>();
-  }
-  else {  // use Aho-Corasick automaton
-    std::vector<std::pair<std::string, std::vector<boost::tuple<int, int> > > >  patterns;
-    patterns = get_n_neighbourhood_in_vector(seed, n);
-    printf("There are %zu distinct sequences in the Hamming-%i neighbourhood\n", patterns.size(), n);
-
-    //    aho_corasick my_aca(match_handler_positions);
-    aho_corasick my_aca(match_handler_counts);
-    for (int i=0; i < patterns.size(); ++i) {
-      my_aca.add_string(patterns[i].first, i);
-    }
-    
-    id_to_count_type ordinal_id_to_count(patterns.size());
-    std::vector<std::vector<long int> > positions;
-    //    my_aca.search(str1, &positions);
-    my_aca.search(str1, &ordinal_id_to_count);
-    
-    printf("Seed %s count = %i\n", seed.c_str(), ordinal_id_to_count[0]);
-    int count;
-    int ordinal_id;
-    BOOST_FOREACH(boost::tie(ordinal_id, count), ordinal_id_to_count) {
-      std::vector<boost::tuple<int,int> >& temp = patterns[ordinal_id].second;
-      std::string query = patterns[ordinal_id].first;
-      bool is_palindrome = is_palindromic(query);
-      if (is_palindrome and not count_palindromes_twice)
-	count /= 2;
-      int j, a;
-      //      if (use_palindromic_correction)
-      //	count *= palindromic_correction(pattern, seed, seed_rev);
-
-      BOOST_FOREACH(boost::tie(j,a), temp) 
-	result(a, j) += count;
-    }
-  }
-
-  printf("Multinomial-n algorithm took\n");
-  TIME_CHECK(t);
-  printf("seconds\n");
-  return result;
-} // find_multinomial_n
-
-
-// this computes the init_motif matrix counts
-// Chooses the first occurence with lowest Hamming distance for each sequence
+// This computes the init_motif matrix counts.
+// Chooses the first occurrence with lowest Hamming distance for each sequence
 matrix<double>
 find_hamming_neighbourhood(const std::vector<std::string>& sequences,
 			   const std::string& str, int delta)
@@ -871,14 +422,14 @@ find_hamming_neighbourhood(const std::vector<std::string>& sequences,
 
 
 
-
+// Returns a 0-1-matrix corresponding to 'seed', which can be an IUPAC sequence
 dmatrix
-make_consensus_matrix(const std::string& consensus, int count)
+make_consensus_matrix(const std::string& seed, int count)
 {
-  int k = consensus.length();
+  int k = seed.length();
   dmatrix result(4, k);
   for (int i=0;i<k;++i)
-    result.set_column(i, iupac_probability(consensus[i]));
+    result.set_column(i, iupac_probability(seed[i]));
   //    result(to_int(consensus[i]),i)=count;
   return result;
 }
@@ -961,130 +512,167 @@ reverse_complement_sequences(std::vector<std::string>& sequences)
     sequences[i] = reverse_complement(sequences[i]);
 }
 
-void
-print_ics(const dmatrix& m)
+typedef boost::tuple<dmatrix,int> (*func_ptr_t)(const std::string&, const std::vector<std::string>&, int);
+typedef dmatrix (*func_ptr2_t)(const std::string&, const std::vector<std::string>&, int);
+
+
+// For testing purposes
+char GATA[] =
+  "0.468455	0.000000	1.000000	0.000000	0.776771	0.616743	0.144221	0.371156\n"
+  "0.215102	0.000000	0.000000	0.000000	0.054366	0.115108	0.301166	0.209968\n"
+  "0.071038	1.000000	0.000000	0.000000	0.038715	0.165468	0.452810	0.309650\n"
+  "0.245405	0.000000	0.000000	1.000000	0.130148	0.102681	0.101803	0.109226\n";
+
+// Creates a matrix of width k+2*g with another matrix 'm' in the middle.
+// Rest of the columns are filled with q
+dmatrix
+make_helper_pfm(const dmatrix& m, const dvector& q, int g)
 {
-  std::vector<double> bg(4, 0.25);   // even background distribution
   int k = m.get_columns();
-
-  std::vector<double> ic(k);
-  for (int i=0; i < k; ++i) 
-    ic[i] = information_content(m.column(i), bg);
-  printf("Information content by columns\n");
-  printf("%s\n", print_vector(ic, "\t", 2).c_str());
-  printf("Average information content is %.2f\n", sum(ic) / k);
+  int len = k + 2*g;
+  dmatrix result(4, len);
+  for (int i=0; i < g; ++i) {
+    result.set_column(i, q);
+    result.set_column(i+k+g, q);
+  }
+  result.inject(m, 0, g);
+  
+  return result;
 }
-
-typedef dmatrix (*func_ptr_t)(const std::string&, const std::vector<std::string>&, int);
-
 
 dmatrix
-find_model(func_ptr_t func_ptr, const std::string& name, const std::string& seed, int hamming_distance,
-	   std::vector<std::string>& sequences, std::vector<std::string>& sequences_bg, const std::vector<double>& bg,
+find_model(func_ptr_t func_ptr, const std::string& name, const std::string& seed, int hamming_radius,
+	   std::vector<std::string>& sequences, std::vector<std::string>& sequences_bg, const std::vector<double>& data_bg,
 	   double lambda)
 {
-  //int k = seed.length();
-  int lines = sequences.size();
-  int lines_bg = sequences_bg.size();
-  //int L = sequences[0].length();
-  dmatrix motif;
-  motif = func_ptr(seed, sequences, hamming_distance);
-  
-  if (use_background_correction) {
-    printf("\n");
-    write_matrix(stdout, motif, to_string("Signal %s counts before correction:\n", name.c_str()), "%.0f");
-
-    dmatrix motif_bg;
-    motif_bg = func_ptr(seed, sequences_bg, hamming_distance);
-    write_matrix(stdout, motif_bg, to_string("Background %s counts before correction:\n", name.c_str()), "%.0f");
-
-    dmatrix m_new;
-    if (use_cell_correction)
-      m_new = (double)lines_bg/lines*motif - lambda*motif_bg;
-    else
-      m_new = motif - ((double)lines/lines_bg*lambda)*motif_bg;
-
-    m_new.apply(cut);
-    motif = m_new;
-    printf("\n");
-  } else if (use_bernoulli_background) {
-    assert(use_multimer);
-    write_matrix(stdout, motif, to_string("Signal %s counts before correction:\n", name.c_str()), "%.0f");
-    dmatrix mean_matrix;
-    int total_count;
-    boost::tie(mean_matrix, total_count) =
-      find_multinomial_n_background(seed, sequences, bg,
-				    hamming_distance, use_multimer);
-    write_matrix(stdout, mean_matrix, "Background matrix:\n", "%.0f");
-    dmatrix m_new;
-    m_new = motif - mean_matrix;
- 
-    m_new.apply(cut);
-    motif = m_new;
-    printf("\n");
-  }
-
-  write_matrix(stdout, motif, to_string("%s motif matrix counts:\n", name.c_str()), "%.0f");
-  dmatrix norm=motif;
-  normalize_matrix_columns(norm);
-  write_matrix(stdout, norm, to_string("%s motif matrix:\n", name.c_str()), "%.6f"); 
-  print_ics(norm);
-  printf("\n");
-
-  return motif;
-}
-
-
-dinuc_model
-find_dinucleotide_model(func_ptr_t func_ptr, const std::string& name, const std::string& seed, int hamming_distance,
-			std::vector<std::string>& sequences, std::vector<std::string>& sequences_bg,
-			double lambda)
-{
+  TIME_START(t);
   int k = seed.length();
   int lines = sequences.size();
   int lines_bg = sequences_bg.size();
   int L = sequences[0].length();
-  dmatrix motif = motif = func_ptr(seed, sequences, hamming_distance);
+  //  int N = lines*(L-k+1); // number of sites
+  dmatrix motif;
+  int total_count;
+  TIME_START(t2);
+  boost::tie(motif, total_count) = func_ptr(seed, sequences, hamming_radius);
+  TIME_PRINT("Multinomial-n observed took %.2f seconds.\n", t2);
 
-  if (use_background_correction) {
+  TIME_START(t3);
+  if (background_correction == file_correction) {   // This bg correction uses previous generation SELEX data
     printf("\n");
     write_matrix(stdout, motif, to_string("Signal %s counts before correction:\n", name.c_str()), "%.0f");
 
     dmatrix motif_bg;
-    motif_bg = func_ptr(seed, sequences_bg, hamming_distance);
+    int bg_total_count;
+    boost::tie(motif_bg, bg_total_count) = func_ptr(seed, sequences_bg, hamming_radius);
     write_matrix(stdout, motif_bg, to_string("Background %s counts before correction:\n", name.c_str()), "%.0f");
-
+    printf("Lambda is %f\n", lambda);
     dmatrix m_new;
     if (use_cell_correction)
-      m_new = (double)lines_bg/lines*motif - lambda*motif_bg;
+      m_new = (double)lines_bg/lines*motif - (1.0-lambda)*motif_bg;
     else
-      m_new = motif - ((double)lines/lines_bg*lambda)*motif_bg;
+      m_new = motif - ((double)lines/lines_bg*(1.0-lambda))*motif_bg;
 
     m_new.apply(cut);
     motif = m_new;
     printf("\n");
-  } else if (use_bernoulli_background) {
-    // BERNOULLI CORRECTION ISN'T CURRENTLY CORRECT SINCE IT DOESN'T CONSIDER N's OR OTHER IUPACs, OR HD>2
-    assert(use_multimer);
-    write_matrix(stdout, motif, to_string("Signal %s counts before correction:\n", name.c_str()), "%.0f");
-    double mean = lines * (use_two_strands ? 2 : 1) * (L-k+1) * pow(4, -k);
+  } else if ((background_correction == uniform_correction or background_correction == data_correction) and k <= 10) {   // NOTE! FIX THIS! MAGIC NUMBER AS WELL!
+
+    // This bg correction do NOT use previous generation SELEX data
     
-    dmatrix mean_matrix(4, k);
-    mean_matrix.fill_with(mean);
+    //assert(use_multimer);
+    write_matrix(stdout, motif, to_string("Signal %s counts before correction:\n", name.c_str()), "%.0f");
+    dmatrix expected_matrix;
+    double bg_total_prob;
+    std::vector<double> uniform_bg(4, 0.25);
+    const std::vector<double>& bg = background_correction == uniform_correction ? uniform_bg : data_bg;
+    boost::tie(expected_matrix, bg_total_prob) =
+      find_multinomial_n_background(seed, sequences, bg,
+				    hamming_radius, use_multimer);
     dmatrix m_new;
-    m_new = motif - mean_matrix;
- 
+    int sites = 0;
+    if (data_counting == all_occurrences) 
+      sites = lines * (L-k+1);     // For all occurrences method
+    else if (data_counting == neighbourhood_contains_one) {
+      //  int sites = lines * (L - (k+2*g) + 1);
+      sites = lines * (L - k + 1);
+    }
+    printf("Total %s bg count is %f\n", name.c_str(), sites*bg_total_prob);
+    dmatrix motif_bg;
+    if (data_counting == all_occurrences) {
+      if (not lambda_given)
+	lambda = 0.0;
+      printf("Lambda is %f\n", lambda);
+      motif_bg = (1.0-lambda)*sites*expected_matrix;
+    }
+    else if (data_counting == neighbourhood_contains_one) {   // assumed to be neighbour method
+      int g = cluster_threshold;
+      double bg_total_prob2;
+      //      dmatrix estimate = motif-motif_bg;
+      //estimate.apply(cut);
+      dmatrix estimate;
+      dmatrix mstar;
+      if (real_matrix_filename != "") {
+	estimate = read_matrix_file(real_matrix_filename);
+	mstar = make_helper_pfm(0.00001+estimate, bg, g);  // Note! Pseudo count added
+      }
+      else {
+	estimate = motif;
+	mstar = make_helper_pfm(1+estimate, bg, g);  // Note! Pseudo count added
+      }
+      normalize_matrix_columns(mstar);
+      write_matrix(stdout, mstar, to_string("mstar:\n"), "%.2f");
+      typedef boost::multi_array_types::extent_range range;
+      boost::multi_array<dmatrix,1> shifted_bg_pfms(boost::extents[range(-(k+g-1), k+g)]);
+      for (int j = -(k+g-1); j <= k+g-1; ++j) {
+	if (j == 0)
+	  continue;
+	dmatrix mjstar = get_shifted_window_pwm(mstar, bg, j);
+	dmatrix em;
+	boost::tie(em, bg_total_prob2) =
+	  neighbour_expected_pfm_in_pfm_distribution(seed, mjstar, hamming_radius);
+	shifted_bg_pfms[j] = em;
+      }
+      
+      if (not lambda_given)
+	lambda = estimate_signal_fraction(motif, expected_matrix, shifted_bg_pfms, sequences, bg);
+      printf("Lambda is %f\n", lambda);
+      //      motif_bg = (1.0 - lambda*(2*g+1)) * sites * expected_matrix;
+      motif_bg = (1.0 - lambda*(2*(g+k)-1)) * sites * expected_matrix;
+      write_matrix(stdout, motif_bg, to_string("%s background matrix:\n", name.c_str()), "%.5f");
+      for (int j = -(k+g-1); j <= k+g-1; ++j) {
+	if (j == 0)
+	  continue;
+	dmatrix temp = lambda * sites * shifted_bg_pfms[j];
+	write_matrix(stdout, temp, to_string("contribution j=%i:\n", j), "%f");
+	motif_bg += temp;
+	//printf("Total j=%i %s bg count is %f\n", j, name.c_str(), sites*bg_total_prob2);
+      }
+    }
+    else {
+      error(true, "Not implemented!");
+    }
+    
+    write_matrix(stdout, motif_bg, to_string("%s background matrix:\n", name.c_str()), "%.0f");
+    m_new = motif - motif_bg;
     m_new.apply(cut);
     motif = m_new;
     printf("\n");
+
   }
+  TIME_PRINT("Multinomial-n background took %.2f seconds.\n", t3);
 
-  write_matrix(stdout, motif, to_string("%s dinucleotide motif matrix counts:\n", name.c_str()), "%.0f");
-  dinuc_model dm;
-  dm.init(motif);
-
-  return dm;
+  write_matrix(stdout, motif, to_string("%s motif matrix counts:\n", name.c_str()), "%.0f");
+  dmatrix norm=motif;
+  normalize_matrix_columns(norm);
+  
+  write_matrix(stdout, norm, to_string("%s motif matrix:\n", name.c_str()), "%.6f"); 
+  print_ics(norm);
+  printf("\n");
+  TIME_PRINT("Total multinomial-n took %.2f seconds.\n", t);
+  return motif;
 }
+
 
 int main(int argc, char* argv[])
 {
@@ -1100,6 +688,8 @@ int main(int argc, char* argv[])
   bool use_reverse_strand=false;
   use_two_strands = true;
   int hamming_radius=1;
+  use_multimer=false;   // allow multiple occurrences per sequence
+  double lambda=0.0;
   
   ///////////////////////////////////////////////////////////////////////////////////////////
   // 
@@ -1111,22 +701,28 @@ int main(int argc, char* argv[])
   po::options_description nonhidden("Allowed options");
   nonhidden.add_options()
     ("help", "produce help message")
-    ("hamming-radius", po::value<int>(), m("Maximum Hamming radius", 
-					     hamming_radius).c_str())
+    ("hamming-radius", po::value<int>(), m("Maximum Hamming radius", hamming_radius).c_str())
+    ("stairs", m("Use weighted Hamming distance", use_weighted_hamming).c_str())
     ("statistics", "Print matching statistics")
-    ("single-strand", m("Assume sequences can come from either strand", use_two_strands).c_str())
+    ("single-strand", m("Assume sequences can only come from forward strand", not use_two_strands).c_str())
     ("reverse-strand", m("Assume sequences come from reverse strand", false).c_str())
     ("count-palindromes-twice", m("Count palindromes twice", count_palindromes_twice).c_str())
-    ("dinucleotide-model", m("Compute dinucleotide model", use_dinucleotide_model).c_str())
-    ("use-cell-correction", m("Use different formula to do background correction", use_cell_correction).c_str())
-    ("use-bernoulli-background", m("Use bernoulli model to subtract background", use_bernoulli_background).c_str())
+    ("count", po::value<std::string>(), "Counting method: all, neighbour, or cluster, default: all")
+    ("seed-count", po::value<std::string>(), "Counting method for finding seeds: all, unique, once, default: all")
+    ("cluster-threshold", po::value<int>(), m("Cluster threshold", cluster_threshold).c_str())
     ("pseudo-counts", "Use pseudo counts, default: no")
+    ("correct-for-seed-bias", m("This should be used for learning dinucleotide model.",
+			      correct_for_seed_bias).c_str())
+    //    ("use-bernoulli-background", m("Use bernoulli model to subtract background", use_bernoulli_background).c_str())
     // ("prior", po::value<std::string>(), 
     //  "Choose either addone or dirichlet prior")
     ("background", po::value<std::string>(),      
-     "Filename of the background sequences, enables also background correction")
+     "Either 'uniform', 'data', or the filename of the background sequences, enables also background correction. "
+     "The options 'uniform' and 'data' use the Bernoulli model for background.")
+    ("lambda", po::value<double>(), m("Proportion of signal in data. If not given and background correction is in use, the lambda will be estimated from the data.", lambda).c_str())
     ("output-matrix", po::value<std::string>(), "Name of the output matrixfile, default: none")
-    ("multimer", m("Use multimer version for multinomial-1/2", use_multimer).c_str())
+    ("real-matrix", po::value<std::string>(), "Name of the real matrixfile, default: none")
+    //    ("multimer", m("Use multimer version for multinomial-1/2", use_multimer).c_str())
     //    ("palindromic-correction", m("Correct mixing of direction by Esko's method", use_palindromic_correction).c_str())
     ("palindromic-index",  po::value<std::string>(), m("Require that seed has high-enough palindromic index: automatic (depending on Hamming radius), 0, 1, ...", palindromic_index_limit).c_str())
     ("dependence-matrix", m("Find dependence matrix of result", find_dependence_matrix).c_str())
@@ -1176,6 +772,10 @@ int main(int argc, char* argv[])
       statistics=true;
     }   
 
+    if (vm.count("stairs")) {
+      use_weighted_hamming=true;
+    }   
+
     if (vm.count("single-strand"))
       use_two_strands = false;
 
@@ -1187,16 +787,15 @@ int main(int argc, char* argv[])
       use_reverse_strand = true;
     }
 
-    if (vm.count("use-cell-correction"))
-      use_cell_correction = true;
 
-    if (vm.count("dinucleotide-model"))
+    if (vm.count("dinucleotide-model")) {
       use_dinucleotide_model = true;
-
+      hamming_radius = 2;
+    }
     if (vm.count("pseudo-counts"))
       use_pseudo_counts = true;
 
-
+    // Note! This has to be below the handling of --dinucleotide-model
     if (vm.count("hamming-radius"))
       hamming_radius = vm["hamming-radius"].as< int >();
 
@@ -1216,14 +815,60 @@ int main(int argc, char* argv[])
     //    if (vm.count("palindromic-correction"))
     //      use_palindromic_correction = true;
 
-    if (vm.count("multimer"))
+    
+    if (vm.count("cluster-threshold")) {
+      cluster_threshold = vm["cluster-threshold"].as< int >();
+    }
+    
+    if (vm.count("count")) {
+      std::string param = vm["count"].as<std::string>();
+      if (param == "all") {
+	data_counting = background_counting = all_occurrences;
+      }
+      else if (param == "cluster") {
+	data_counting = background_counting = choose_one_per_cluster;
+      }
+      else if (param == "neighbour") {
+	data_counting = background_counting = neighbourhood_contains_one;
+      }
+	
       use_multimer = true;
-
-    if (vm.count("use-bernoulli-background")) {
-      assert(vm.count("background") == 0);
-      use_bernoulli_background = true;
     }
 
+    if (vm.count("seed-count")) {
+      std::string param = vm["seed-count"].as<std::string>();
+      if (param == "all") {
+	seed_counting = all_occurrences;
+      }
+      else if (param == "unique") {
+	seed_counting = sequence_contains_one;
+      }
+      else if (param == "once") {
+	seed_counting = sequence_contains_at_least_one;
+      }
+	
+    }
+
+    if (vm.count("background")) {
+      std::string t = vm["background"].as< string >();
+      if (t == "uniform") {
+	background_correction = uniform_correction;
+      }
+      else if (t == "data") {
+	background_correction = data_correction;
+      }
+      else {
+	background_correction = file_correction;
+	background_file = vm["background"].as< string >();
+
+      }
+    }
+    
+    if (vm.count("use-cell-correction")) {
+      error(vm.count("background") == 0, "The '--use-cell-correction' option must be used with the '--background filename option'.");
+      use_cell_correction = true;
+    }
+    
     if (vm.count("dependence-matrix"))
       find_dependence_matrix = true;
 
@@ -1233,8 +878,14 @@ int main(int argc, char* argv[])
     if (vm.count("print-alignment"))
       print_alignment = true;
 
+    if (vm.count("correct-for-seed-bias"))
+      correct_for_seed_bias = true;
 
-    
+
+    if (background_correction != file_correction and vm.count("lambda")) {
+      lambda = vm["lambda"].as<double>();
+      lambda_given = true;
+    }
     
     // if (vm.count("prior")) {
     //   prior_parameter = vm["prior"].as< string >();
@@ -1246,14 +897,13 @@ int main(int argc, char* argv[])
     //   }
     // }   
     
-    if (vm.count("background")) {
-      background_file = vm["background"].as< string >();
-      use_background_correction=true;
-    }   
     
 
     if (vm.count("output-matrix")) 
       matrixfile = vm["output-matrix"].as< string >();
+    
+    if (vm.count("real-matrix")) 
+      real_matrix_filename = vm["real-matrix"].as< string >();
     
     seqsfile = vm["seqs"].as< string >();
 
@@ -1278,7 +928,8 @@ int main(int argc, char* argv[])
   int lines, bad_lines;
 
 
-  boost::tie(lines, bad_lines) = read_sequences(seqsfile, sequences, true);
+  //  boost::tie(lines, bad_lines) = read_sequences(seqsfile, sequences, true);
+  boost::tie(lines, bad_lines) = read_sequences(seqsfile, sequences, false);   // Don't allow IUPAC
   
 
 
@@ -1296,11 +947,20 @@ int main(int argc, char* argv[])
   printf("Input contained %d bad lines\n", bad_lines);
   printf("Sequence length is %i\n", L);
   printf("Motif length is %i\n", k);
-  printf("Max hamming distance %i\n", hamming_radius);
+
+  printf("Background correction: %s\n", background_correction_type_to_string[background_correction]);
+  printf("Counting type for data is %s\n", counting_type_to_string[data_counting]);
+  if (background_correction != no_correction and background_correction != file_correction) {
+    printf("Counting type for background is %s\n", counting_type_to_string[background_counting]);
+  }
+  
+  printf("Cluster threshold is %i\n", cluster_threshold);
+  printf("Hamming radius is %i\n", hamming_radius);
+  printf("Use weighted Hamming distance: %s\n", yesno(use_weighted_hamming));
   printf("Use two dna strands: %s\n", use_two_strands ? "yes" : "no");
   printf("Count palindromes twice: %s\n", count_palindromes_twice ? "yes" : "no");
   printf("Use reverse strand: %s\n", use_reverse_strand ? "yes" : "no");
-  printf("Use bernoulli background: %s\n", use_bernoulli_background ? "yes" : "no");
+  //  printf("Use bernoulli background: %s\n", use_bernoulli_background ? "yes" : "no");
   //  printf("Use palindromic correction: %s\n", use_palindromic_correction ? "yes" : "no");
   printf("Palindromic index limit is %i\n", palindromic_index_limit);
   //  printf("Require directional seed: %s\n", require_directional_seed ? "yes" : "no");
@@ -1341,10 +1001,7 @@ int main(int argc, char* argv[])
   std::string seed;
   int seed_count=0;
   if (seed_param == "") {
-    if (use_multimer)
-      boost::tie(seed,seed_count) = most_common_pattern_multimer(sequences, k, seed_param, contains_N, hamming_radius);
-    else
-      boost::tie(seed,seed_count) = most_common_pattern_monomer(sequences, k, seed_param, hamming_radius);
+    boost::tie(seed,seed_count) = most_common_pattern(sequences, k, seed_param, contains_N, hamming_radius);
     printf("Using seed %s with count %i\n", seed.c_str(), seed_count);
   }
   else
@@ -1373,13 +1030,14 @@ int main(int argc, char* argv[])
   //
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-  if (not use_multimer and L < 60)
-    distribution_of_startpositions(sequences, seed);
-
+  if (false) {
+    if (not use_multimer and L < 60)
+      distribution_of_startpositions(sequences, seed);
+  }
+  
   int lines_bg=0, bad_lines_bg;
   std::vector<std::string> background_seqs;
-  double lambda=0.0;
-  if (use_background_correction) {
+  if (background_correction == file_correction) {
     printf("\n");
     boost::tie(lines_bg, bad_lines_bg) = read_sequences(background_file, background_seqs);
     check_data(background_seqs);
@@ -1392,6 +1050,7 @@ int main(int argc, char* argv[])
     if (lambda > 1)
       lambda = 1.0;
     printf("Background lambda is %f\n", lambda);
+    lambda = 1.0 - lambda; // elsewhere signal lambda is used, hence the conversion
 
   }
 
@@ -1419,14 +1078,14 @@ int main(int argc, char* argv[])
   /////////////////////////////////////
   
   printf("\n");
-
-  func_ptr_t func_ptr = use_multimer ? find_snips_multimer : find_snips_monomer;
+  func_ptr_t func_ptr;// = use_multimer ? find_snips_multimer : find_snips_monomer;
   dmatrix multinomial1_motif;
+  /*
 
   if (k <= 64) 
     multinomial1_motif = find_model(func_ptr, "multinomial-1", seed, 1, sequences, background_seqs, background_probabilities,
 					    lambda);
-
+  */
 
 
   /////////////////////////////////////
@@ -1445,38 +1104,21 @@ int main(int argc, char* argv[])
   // compute the multinomial-n matrix
   //
   /////////////////////////////////////
- 
-  if (k >= 20 or hamming_radius >= 4) 
-    func_ptr = find_multinomial_n_scan;
-  else
-    func_ptr = find_multinomial_n;
 
-  dmatrix multinomial_n_motif= find_model(func_ptr, "multinomial-n", seed, hamming_radius, sequences, background_seqs, background_probabilities,
-				  lambda);
-
-  /////////////////////////////////////
-  //
-  // compute the dinucleotide model
-  //
-  /////////////////////////////////////
-
-  if (use_dinucleotide_model) {
-    typedef dmatrix (*func_ptr_t)(const std::string&, const std::vector<std::string>&, int);
-    int k = seed.length();
-    func_ptr_t func_ptr;
-    if (k >= 20 or hamming_radius >= 4) 
-      func_ptr = dinucleotide_counts_scan;
+  dmatrix multinomial_n_motif;
+  if (not use_dinucleotide_model) {
+    if (k >= 20 or hamming_radius >= 6) 
+      func_ptr = find_multinomial_n_scan;
     else
-      func_ptr = dinucleotide_counts_suffix_array;
-
-    dinuc_model dm = find_dinucleotide_model(func_ptr, "dinucleotide-n", seed, hamming_radius, sequences, background_seqs,
-					     lambda);
-
-    //dinuc_model dm(sequences, seed, hamming_distance);
-    //    dm.print("","");
-    dm.print();
+      func_ptr = find_multinomial_n;
+    if (hamming_radius < 1) {
+      printf("Warning! Hamming radius of at least 1 should be used to get unbiased pfm model\n");
+    }
+  
+    multinomial_n_motif= find_model(func_ptr, "multinomial-n", seed, hamming_radius, sequences, background_seqs, background_probabilities,
+				    lambda);
   }
-
+  
 
   /////////////////////////////////////
   //
@@ -1484,14 +1126,15 @@ int main(int argc, char* argv[])
   //
   /////////////////////////////////////
 
-  if (not use_multimer and L < 60) {
-    positional_background = count_positional_background(sequences);
+  if (false) {
+    if (not use_multimer and L < 60) {
+      positional_background = count_positional_background(sequences);
     
-    normalize_matrix_columns(positional_background);
-    assert(is_column_stochastic_matrix(positional_background));
-    write_matrix(stdout, positional_background, "Positional background probility matrix:\n", "%.6f");
+      normalize_matrix_columns(positional_background);
+      assert(is_column_stochastic_matrix(positional_background));
+      write_matrix(stdout, positional_background, "Positional background probility matrix:\n", "%.6f");
+    }
   }
-
 
   /////////////////////////////////////
   //
@@ -1516,24 +1159,15 @@ int main(int argc, char* argv[])
 
 
 
-  // print_submotifs(used_motif);
-
-  // store result matrix for EM-algorithm and for dimer computations
   if (matrixfile != "-") {
     write_matrix_file(matrixfile, multinomial_n_motif, "%.0f");
-    /*
-    if (hamming_distance == 1)
-      write_matrix_file(matrixfile, multinomial1_motif);
-    else
-      write_matrix_file(matrixfile, multinomial_n_motif);
-    */
   }
 
   if (statistics) {
     print_hamming_statistics(sequences, seed, hamming_radius);
     print_hamming_statistics2(sequences, seed, hamming_radius);
   }
-  
+
   return 0;
 }
 

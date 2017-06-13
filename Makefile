@@ -16,7 +16,7 @@ else
 	PROGOPT=-lboost_program_options -lboost_system -lboost_filesystem
 endif
 
-CXXFLAGS= -DPACKAGE_VERSION=\"$(version)\" -Wall -Wno-sign-compare -g $(BOOSTINC)
+CXXFLAGS= -std=gnu++11 -DPACKAGE_VERSION=\"$(version)\" -Wall -Wno-sign-compare -g $(BOOSTINC)
 
 NOOPENMP?=0
 ifeq ($(NOOPENMP),0)
@@ -160,12 +160,14 @@ $(distdir):
 	cp dependence.hpp	    $(distdir)
 	cp packed_string.cpp	    $(distdir)
 	cp packed_string.hpp	    $(distdir)
-	cp dinucleotide.cpp	    $(distdir)
-	cp dinucleotide.hpp	    $(distdir)
 	cp kmer_tools.cpp	    $(distdir)
 	cp kmer_tools.hpp	    $(distdir)
 	cp unordered_map.hpp	    $(distdir)
 	cp multinomial.cpp	    $(distdir)
+	cp seed_basic.cpp	    $(distdir)
+	cp seed_basic.hpp	    $(distdir)
+	cp huddinge.cpp	    $(distdir)
+	cp huddinge.hpp	    $(distdir)
 	cp ahocorasick/ac_types.h     $(distdir)/ahocorasick
 	cp ahocorasick/aho_corasick.c $(distdir)/ahocorasick
 	cp ahocorasick/aho_corasick.h $(distdir)/ahocorasick
@@ -184,8 +186,8 @@ $(distdir):
 MULTINOMIAL_OBJS=matrix_tools.o common.o parameters.o kmp.o data.o\
 	dependence.o bndm.o probabilities.o iupac.o\
 	my_assert.o combinatorics.o lambda.o kmer_tools.o multinomial_helper.o packed_string.o  \
-	suffix_array_wrapper.o orientation.o
-$(OBJDIR)/multinomial: dinucleotide.o multinomial.o $(addprefix $(OBJDIR)/, $(MULTINOMIAL_OBJS)) ahocorasick/libahocorasick.a CPM03/difference_cover.o
+	suffix_array_wrapper.o orientation.o huddinge.o multinomial.o seed_basic.o
+$(OBJDIR)/multinomial: $(addprefix $(OBJDIR)/, $(MULTINOMIAL_OBJS)) ahocorasick/libahocorasick.a CPM03/difference_cover.o
 	$(CXX) $(CXXFLAGS) $+ -o $@ $(LDFLAGS)
 
 
@@ -207,7 +209,7 @@ test/test_suffix_array_wrapper: $(TEST_SUFFIX_ARRAY_WRAPPER_OBJS)
 
 main_units=multinomial.o
 
-other_units=permutation_test.o dependence.o matrix_tools.o kmp.o bndm.o cob.o vectors.o stats.o cooccurrence.o cooccurrence_utils.o common.o esko.o sum_method.o alignment.o parameters.o bernoulli.o dynamic_programming_common.o probabilities.o combinatorics.o dinucleotide.o lambda.o my_assert.o kmer_tools.o nucleosome.o orientation.o multinomial_helper.o huddinge.o packed_string.o data.o iupac.o suffix_array_wrapper.o
+other_units=permutation_test.o dependence.o matrix_tools.o kmp.o bndm.o cob.o vectors.o stats.o cooccurrence.o cooccurrence_utils.o common.o esko.o sum_method.o alignment.o parameters.o bernoulli.o dynamic_programming_common.o probabilities.o combinatorics.o lambda.o my_assert.o kmer_tools.o nucleosome.o orientation.o multinomial_helper.o huddinge.o packed_string.o data.o iupac.o suffix_array_wrapper.o
 
 
 # Automatically create dependency files (*.d)

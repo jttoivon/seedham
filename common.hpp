@@ -190,6 +190,15 @@ get_ranges(const boost::multi_array<T, 2>& a)
   return boost::make_tuple(row_begin, row_end, col_begin, col_end);
 }
 
+template <typename T>
+boost::tuple<int,int>
+get_ranges(const boost::multi_array<T, 1>& a)
+{
+  int col_begin, col_end;
+  col_begin = a.index_bases()[0];
+  col_end = col_begin + a.shape()[0];
+  return boost::make_tuple(col_begin, col_end);
+}
 
 void
 normalize_vector(std::vector<double>& v);
@@ -379,6 +388,7 @@ sum(const std::vector<T>& array)
   return sum;
 }
 
+/*
 template <typename T>
 T
 sum(const boost::multi_array<T, 2>& a) 
@@ -394,6 +404,53 @@ sum(const boost::multi_array<T, 2>& a)
     }
   }
   return sum;
+}
+*/
+
+/*
+template <typename T>
+T
+sum(typename boost::multi_array_ref<T, 2>::const_reference a) 
+//sum(const boost::multi_array<T, 1>& a) 
+{
+  int col_begin, col_end;
+  boost::tie(col_begin, col_end) = get_ranges(a);
+
+  T s = 0.0;
+  for (int col=col_begin; col < col_end; ++col) {
+    s += a[col];
+  }
+  return s;
+}
+
+
+template <typename T, std::size_t N>
+T
+sum(typename boost::multi_array_ref<T, N>::const_reference a) 
+//sum(const boost::multi_array<T, N>& a) 
+{
+  int col_begin, col_end;
+  col_begin = a.index_bases()[0];
+  col_end = col_begin + a.shape()[0];
+
+  T s = 0.0;
+  for (int col=col_begin; col < col_end; ++col) {
+    s += sum(a[col]);
+  }
+  return s;
+}
+*/
+
+template <typename T, std::size_t N>
+T
+sum(const boost::multi_array<T, N>& a)
+{
+  //  typedef typename boost::multi_array<T, N>::iterator iterator;
+  T s = 0.0;
+  for (auto it=a.data(); it < a.data()+a.num_elements(); ++it) {
+    s += *it;
+  }
+  return s;
 }
 
 /*
@@ -502,30 +559,64 @@ max_element(const std::vector<T>& array)
   return max;
 }
 
+/*
 template <typename T>
 T
 max_element(const boost::multi_array<T, 2>& a)
 {
   int row_begin, row_end, col_begin, col_end;
   boost::tie(row_begin, row_end, col_begin, col_end) = get_ranges(a);
-  T max = -std::numeric_limits<T>::max();
+  T max = std::numeric_limits<T>::lowest();
   for (int r = row_begin; r < row_end; ++r)
     for (int c = col_begin; c < col_end; ++c)
       max = std::max(a[r][c], max);
   return max;
 }
+*/
 
-
+/*
 template <typename T>
 T
-min_element(const std::vector<T>& array)
+max_element(const boost::multi_array<T, 1ul>& a) 
 {
-  T min=array[0];
-  size_t N = array.size();
-  for (size_t i=1; i < N; ++i)
-    min = std::min(min, array[i]);
+  int col_begin, col_end;
+  col_begin = a.index_bases()[0];
+  col_end = col_begin + a.shape()[0];
 
-  return min;
+  T m = std::numeric_limits<T>::lowest();
+  for (int col=col_begin; col < col_end; ++col) {
+    m = std::max(m, a[col]);
+  }
+  return m;
+}
+
+
+template <typename T, std::size_t N>
+T
+max_element(const boost::multi_array<T, N>& a) 
+{
+  int col_begin, col_end;
+  col_begin = a.index_bases()[0];
+  col_end = col_begin + a.shape()[0];
+
+  T m = std::numeric_limits<T>::lowest();
+  for (int col=col_begin; col < col_end; ++col) {
+    m = std::max(m, max_element(a[col]));
+  }
+  return m;
+}
+*/
+
+template <typename T, std::size_t N>
+T
+max_element(const boost::multi_array<T, N>& a)
+{
+  //  typedef typename boost::multi_array<T, N>::iterator iterator;
+  T m = std::numeric_limits<T>::lowest();
+  for (auto it=a.data(); it < a.data()+a.num_elements(); ++it) {
+    m = std::max(m, *it);
+  }
+  return m;
 }
 
 /*
@@ -553,6 +644,63 @@ max_element(const boost::unordered_map<K, V, H>& m)
   return max;
 }
 
+/*
+template <typename T>
+T
+min_element(const boost::multi_array<T, 1>& a) 
+{
+  int col_begin, col_end;
+  col_begin = a.index_bases()[0];
+  col_end = col_begin + a.shape()[0];
+
+  T m = std::numeric_limits<T>::max();
+  for (int col=col_begin; col < col_end; ++col) {
+    m = std::min(m, a[col]);
+  }
+  return m;
+}
+
+
+template <typename T, int N>
+T
+min_element(const boost::multi_array<T, N>& a) 
+{
+  int col_begin, col_end;
+  col_begin = a.index_bases()[0];
+  col_end = col_begin + a.shape()[0];
+
+  T m = std::numeric_limits<T>::max();
+  for (int col=col_begin; col < col_end; ++col) {
+    m = std::min(m, min_element(a[col]));
+  }
+  return m;
+}
+*/
+
+template <typename T, std::size_t N>
+T
+min_element(const boost::multi_array<T, N>& a)
+{
+  //  typedef typename boost::multi_array<T, N>::iterator iterator;
+  T m = std::numeric_limits<T>::max();
+  for (auto it=a.data(); it < a.data()+a.num_elements(); ++it) {
+    m = std::min(m, *it);
+  }
+  return m;
+}
+
+
+template <typename T>
+T
+min_element(const std::vector<T>& array)
+{
+  T min=array[0];
+  size_t N = array.size();
+  for (size_t i=1; i < N; ++i)
+    min = std::min(min, array[i]);
+
+  return min;
+}
 
 template <typename K, typename V, typename H>
 K
@@ -816,6 +964,55 @@ print_array(FILE* fp, const boost::multi_array<T, 2>& a,
 }
 
 template <typename T>
+void
+print_array(FILE* fp, const boost::multi_array<T, 1>& a, 
+	    const std::vector<std::string>& headers = std::vector<std::string>(),
+	    const std::string& format = "%.2f")
+{
+  int col_begin, col_end;
+  boost::tie(col_begin, col_end) = get_ranges(a);
+
+  bool use_headers = headers.size() == (col_end - col_begin);
+  if (use_headers) {
+    for (int col=col_begin; col < col_end-1; ++col)
+      fprintf(fp, "%s\t", headers[col-col_begin].c_str());
+    fprintf(fp, "%s\n", headers[col_end-col_begin-1].c_str());
+  }
+  
+  for (int col=col_begin; col < col_end-1; ++col) {
+    print_cell(fp, format, a[col]);
+    fprintf(fp, "\t");
+  }
+  print_cell(fp, format, a[col_end-1]);
+  fprintf(fp, "\n");
+}
+
+template <typename T>
+void
+print_array_with_default_headers(FILE* fp, const boost::multi_array<T, 2>& a, 
+				 const std::string& format = "%.2f")
+{
+  int row_begin, row_end;
+  int col_begin, col_end;
+  boost::tie(row_begin, row_end, col_begin, col_end) = get_ranges(a);
+  std::vector<std::string> row_headers = integer_range(row_begin, row_end);
+  std::vector<std::string> col_headers = integer_range(col_begin, col_end);
+  print_array(fp, a, row_headers, col_headers, format);
+}
+
+template <typename T>
+void
+print_array_with_default_headers(FILE* fp, const boost::multi_array<T, 1>& a, 
+				 const std::string& format = "%.2f")
+{
+  int col_begin, col_end;
+  boost::tie(col_begin, col_end) = get_ranges(a);
+  std::vector<std::string> col_headers = integer_range(col_begin, col_end);
+  print_array(fp, a, col_headers, format);
+}
+
+	    
+template <typename T>
 boost::multi_array<T, 2>
 read_array(FILE* fp)
 {
@@ -910,6 +1107,8 @@ write_cob_file(const std::string& filename, const boost::multi_array<T, 2>& a)
   fclose(fp);
 }
 
+std::vector<std::string>
+get_n_neighbourhood(const std::string&seed, int n);
 
 #endif // COMMON_HPP
 

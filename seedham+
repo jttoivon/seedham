@@ -2,23 +2,28 @@
 
 
 usage="
-Usage: seedham [ -v ] [ -r arg ] [ motif_width | seed ] inputfile
+Usage: seedham [ -d ] [ -v ] [ -r arg ] [ motif_width | seed ] inputfile
 Either seed or the length of seed can be given as parameter.
 Input file should contain one sequence per line and nothing else.
 -r arg Hamming radius
+-d     Use dominance counting
 -v     Be verbose"
 
 base=$(dirname $0)
 
 radius=1
+flags="--count all"
 
-while getopts :r:v OPT; do
+while getopts :r:vd OPT; do
     case $OPT in
         r|+r)   # Hamming radius
             radius=$OPTARG
             ;;
         v|+v)   # verbose
             verbose=1
+            ;;
+        d|+d)   # dominance counting
+            flags="--count neighbour"
             ;;
         *)
             #echo "usage: ${0##*/} [+-dn} [--] ARGS..."
@@ -39,10 +44,10 @@ seed=$1
 file=$2
 
 if [[ $verbose == 1 ]] ; then
-    $base/multinomial --palindromic-index automatic --hamming-radius $radius --multimer $seed $file
+    $base/multinomial $flags --palindromic-index automatic --hamming-radius $radius $seed $file
 else
     temp=$(mktemp)
-    $base/multinomial --palindromic-index automatic --hamming-radius $radius --output-matrix $temp --multimer $seed $file > /dev/null
+    $base/multinomial $flags --palindromic-index automatic --hamming-radius $radius --output-matrix $temp $seed $file > /dev/null
     cat $temp
     rm $temp
 fi

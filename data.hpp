@@ -3,6 +3,7 @@
 
 #include "type.hpp"
 #include "matrix.hpp"
+#include "iupac.hpp"
 
 #include <string>
 #include <vector>
@@ -42,15 +43,16 @@ static my_to_int_type to_int;
 
 // interpret string of nucleid acids as a number in base 4
 // The first nucleotide of the string is in the most significant end
-big_int
-dna_to_number(const std::string& s);
+//big_int
+//dna_to_number(const std::string& s);
 
 template <typename T>
 T
 dna_to_number(const std::string& s)  
 {
   assert(s.length() <= (sizeof(T)*4));
-
+  assert(is_iupac_string(s));
+  
   T sum=0;
   for (int i=0; i < s.length(); ++i)
     sum = sum*4 + to_int(s[i]);
@@ -59,15 +61,16 @@ dna_to_number(const std::string& s)
 }
 
 // The first nucleotide of the string is in the most significant end
-std::string
-number_to_dna(big_int i, int l);  // converts integer back to a nucled acid sequence
+//std::string
+//number_to_dna(big_int i, int l);  // converts integer back to a nucled acid sequence
 
 template <typename T>
 std::string
 number_to_dna(T i, int l)  
 {
   assert(i>=0);
-
+  assert(l <= (sizeof(T)*4));
+ 
   char nucs[] = "ACGT";
 
   std::string s(l, 'X');

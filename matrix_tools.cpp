@@ -215,7 +215,19 @@ normalize_matrix_columns(matrix<double>& m)
   }
 }
 
+dmatrix
+normalize_matrix_columns_copy(matrix<double> m)
+{
+  normalize_matrix_columns(m);
+  return m;
+}
 
+dmatrix
+normalize_matrix_rows_copy(matrix<double> m)
+{
+  normalize_matrix_rows(m);
+  return m;
+}
 
 bool
 is_stochastic_matrix(const matrix<double>& m)

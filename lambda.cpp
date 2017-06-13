@@ -39,8 +39,8 @@ find_nonspecific_fraction(const std::vector<std::string>& sequences)
   for (int i=0; i < lines; ++i) {
     const std::string& line = sequences[i];
     for (int j=0; j < m; ++j) {
-      boost::get<1>(kmers[dna_to_number(line.substr(j,k))])++;
-      boost::get<1>(kmers[dna_to_number(reverse_complement(line.substr(j,k)))])++;
+      boost::get<1>(kmers[dna_to_number<size_t>(line.substr(j,k))])++;
+      boost::get<1>(kmers[dna_to_number<size_t>(reverse_complement(line.substr(j,k)))])++;
     }
   }
 

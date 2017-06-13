@@ -6,7 +6,7 @@ packed_string::packed_string(const std::string& s) : bits(0), k(0)
 {
   k = s.length();
   assert(k <= max_len);
-  bits = dna_to_number(s);
+  bits = dna_to_number<big_int>(s);
 }
 
 int 

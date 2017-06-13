@@ -1,3 +1,6 @@
+#ifndef AHO_CORASICK_WRAPPER_HPP
+#define AHO_CORASICK_WRAPPER_HPP
+
 #include "ahocorasick/aho_corasick.h"
 
 #include <string>
@@ -60,3 +63,5 @@ private:
   std::vector<std::string> strings;
   std::vector<STRING> shells;   // char*, id, length triples
 };
+
+#endif // AHO_CORASICK_WRAPPER_HPP

@@ -7,7 +7,10 @@
 #include <cassert>
 
 bool use_middle_gap = false;
-dummy my_reverse_4_2bit_string;
+
+namespace detail {
+  reverse_4_2bit_string_type my_reverse_4_2bit_string;
+}
 
 //namespace boost {
 
@@ -31,6 +34,9 @@ hash_value(const myuint128& input)
 //}
 
 
+
+
+/*
 
 uint32_t
 reverse32_2bitstring(uint32_t u, int k)
@@ -57,10 +63,12 @@ reverse64_2bitstring(uint64_t u, int k)
 
   return u>>(64-2*k);
 }
+*/
 
+/* Not needed anymore
 
 big_int
-reverse_complement_2bitstring(big_int c, int k)
+reverse_complement_2bitstring_big_int(big_int c, int k)
 {
   const int number_of_bits = sizeof(big_int)*8;
   assert(k <= number_of_bits/2);
@@ -75,6 +83,8 @@ reverse_complement_2bitstring(big_int c, int k)
   //assert(number_to_dna(result, l) == reverse_complement(number_to_dna(c, l)));
   return result;
 }
+
+*/
 
 // get counts for each k-mer in data
 void
@@ -98,7 +108,7 @@ get_kmer_counts(const std::vector<std::string>& sequences, int k,
     const int positions = L-k+1;
     std::string s = line.substr(0, k);
 			    
-    big_int temp=dna_to_number(s);
+    big_int temp=dna_to_number<big_int>(s);
     bool palindrome = is_palindromic(s);
     assert(temp < limit);
     ++count[temp];
@@ -138,7 +148,7 @@ kmers::count(int k, big_int code) const
 unsigned int
 kmers::count(int k, const std::string& str) const
 {
-  return count(k, dna_to_number(str));
+  return count(k, dna_to_number<big_int>(str));
 }
 
 double 
@@ -151,7 +161,7 @@ kmers::probability(int k, big_int code) const
 double
 kmers::probability(int k, const std::string& str) const
 {
-  return probability(k, dna_to_number(str));
+  return probability(k, dna_to_number<big_int>(str));
 }
 
 namespace {
@@ -260,8 +270,8 @@ get_gapped_kmer_counts(const std::vector<std::string>& sequences, int k, int max
       const std::string& line2 = reverse_complement(line);
       
       for (int gap_pos=1; gap_pos < (gap_len == 0 ? 2 : k); ++gap_pos) {
-	big_int id1=dna_to_number(line.substr(0, l));
-	big_int id2=dna_to_number(line2.substr(0, l));
+	big_int id1=dna_to_number<big_int>(line.substr(0, l));
+	big_int id2=dna_to_number<big_int>(line2.substr(0, l));
 	++count[gap_len][gap_pos][remove_gap_from_bitstring(id1, k, gap_len, gap_pos)];
 	++count[gap_len][gap_pos][remove_gap_from_bitstring(id2, k, gap_len, gap_pos)];
 	for (int j=1; j < positions; ++j) {
@@ -285,22 +295,6 @@ bit_substr(T code, int L, int pos, int len)
   T mask = (one << (2*len)) - 1;
   return (code >> (2*(L - (pos + len)))) & mask;
 }
-
-/*
-template <typename T>
-T
-dna_to_number(const std::string& s)  
-{
-  
-  //  assert(s.length() < std::numeric_limits<T>::digits/2);
-
-  T sum=0;
-  for (int i=0; i < s.length(); ++i)
-    sum = sum*4 + to_int(s[i]);
-
-  return sum;
-}
-*/
 
 void
 get_gapped_kmer_counts_fast(const std::vector<std::string>& sequences, int k, int max_gap,
