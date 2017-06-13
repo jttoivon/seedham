@@ -5,9 +5,13 @@ As the only dependency, seedham requires Boost library, which is normally instal
 should be used. At least version 1.49 is known to work.
 Running make in the directory of the distribution should compile 'seedham'.
 If wanted, you can install by running the command
-   sudo make install
+
+	sudo make install
+
 or if you want to install to a non-standard location use, for example
-   make prefix=$HOME/usr install
+
+	make prefix=$HOME/usr install
+
 which installs the executables (multinomial, seedham, seedham+) to $HOME/usr/bin.
 Running command 'seedham' or 'seedham+' should give brief instructions on the command line parameters.
 The distribution also includes, for internal use, an implementation of suffix array by Juha Kärkkäinen in directory CPM03.
@@ -21,8 +25,10 @@ several lines, then seedham considers these as separate sequences. So, using a f
 is not recommended. Also, currently sequences containing non-base characters, such as 'N', are ignored.
 
 Examples of running seedham:
-./seedham 8 data/TFAP2A-head-1000.seq GGGCA      # By default, Hamming radius 1 is used
-./seedham -r 3 8 data/TFAP2A-head-1000.seq GGGCA   # Explicitly set Hamming radius to be 3
+
+	./seedham 8 data/TFAP2A-head-1000.seq GGGCA      # By default, Hamming radius 1 is used
+
+	./seedham -r 3 8 data/TFAP2A-head-1000.seq GGGCA   # Explicitly set Hamming radius to be 3
 
 The program seedham+ has the same command line parameters as seedham.
 
