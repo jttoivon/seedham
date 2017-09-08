@@ -64,7 +64,7 @@ CPM03:
 ahocorasick/libahocorasick.a:
 	@$(MAKE) -C ahocorasick
 
-test: test/test_suffix_array_wrapper
+#test: test/test_suffix_array_wrapper
 
 
 install: all
@@ -73,7 +73,7 @@ install: all
 	install -m 0755 multinomial $(prefix)/bin
 	install -m 0755 seedham $(prefix)/bin
 	install -m 0755 seedham+ $(prefix)/bin
-	install -m 0644 README $(docdir)
+	install -m 0644 README.md $(docdir)
 
 dist: $(distdir).tar.gz
 
@@ -106,7 +106,7 @@ $(distdir):
 	mkdir -p $(distdir)/ahocorasick/doc	
 	cp seedham $(distdir)
 	cp seedham+ $(distdir)
-	cp README $(distdir)
+	cp README.md $(distdir)
 	cp COPYING $(distdir)
 	cp Makefile $(distdir)
 	cp common.cpp $(distdir)
@@ -194,9 +194,9 @@ $(OBJDIR)/multinomial: $(addprefix $(OBJDIR)/, $(MULTINOMIAL_OBJS)) ahocorasick/
 
 # test programs
 
-TEST_SUFFIX_ARRAY_WRAPPER_OBJS=CPM03/difference_cover.o suffix_array_wrapper.o iupac.o common.o test/test_suffix_array_wrapper.o
-test/test_suffix_array_wrapper: $(TEST_SUFFIX_ARRAY_WRAPPER_OBJS)
-	$(CXX) $(CXXFLAGS) $(TEST_SUFFIX_ARRAY_WRAPPER_OBJS) -o test/test_suffix_array_wrapper $(LDFLAGS)
+#TEST_SUFFIX_ARRAY_WRAPPER_OBJS=CPM03/difference_cover.o suffix_array_wrapper.o iupac.o common.o test/test_suffix_array_wrapper.o
+#test/test_suffix_array_wrapper: $(TEST_SUFFIX_ARRAY_WRAPPER_OBJS)
+#	$(CXX) $(CXXFLAGS) $(TEST_SUFFIX_ARRAY_WRAPPER_OBJS) -o test/test_suffix_array_wrapper $(LDFLAGS)
 
 .PHONY: dist FORCE distcheck
 
