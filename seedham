@@ -7,14 +7,16 @@ Either seed or the length of seed can be given as parameter.
 Input file should contain one sequence per line and nothing else.
 -r arg Hamming radius
 -d     Use dominance counting
+-s     Use only single strand
 -v     Be verbose"
 
 base=$(dirname $0)
 
 radius=1
-flags="--count all" 
+flags=
+counting="--count all" 
 
-while getopts :r:vd OPT; do
+while getopts :r:vds OPT; do
     case $OPT in
         r|+r)   # Hamming radius
             radius=$OPTARG
@@ -23,7 +25,10 @@ while getopts :r:vd OPT; do
             verbose=1
             ;;
 	d|+d)   # dominance counting
-	    flags="--count neighbour"
+	    counting="--count neighbour"
+	    ;;
+	s|+s)   # single strand
+	    flags="$flags --single-strand"
 	    ;;
         *)
             #echo "usage: ${0##*/} [+-dn} [--] ARGS..."
@@ -35,13 +40,14 @@ shift $(( OPTIND - 1 ))
 OPTIND=1
 
 if [[ $# -ne 2 ]] ; then
-   echo Two command line parameters are needed, $# given.
-   echo "$usage"
+   echo Two command line parameters are needed, $# given. >&2
+   echo "$usage" >&2
    exit 1
 fi
 
 seed=$1
 file=$2
+flags="$flags $counting"
 
 if [[ $verbose == 1 ]] ; then
     $base/multinomial $flags --hamming-radius $radius $seed $file

@@ -26,9 +26,9 @@ is not recommended. Also, currently sequences containing non-base characters, su
 
 Examples of running seedham:
 
-	./seedham 8 data/TFAP2A-head-1000.seq GGGCA      # By default, Hamming radius 1 is used
+	./seedham 8 data/TFAP2A-head-1000.seq            # By default, Hamming radius 1 is used. Use best seed of length 8
 
-	./seedham -r 3 8 data/TFAP2A-head-1000.seq GGGCA   # Explicitly set Hamming radius to be 3
+	./seedham -r 3 GGGCA data/TFAP2A-head-1000.seq   # Explicitly set Hamming radius to be 3. Use seed GGGCA
 
 The program seedham+ has the same command line parameters as seedham.
 
